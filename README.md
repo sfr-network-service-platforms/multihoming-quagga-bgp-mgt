@@ -3,7 +3,7 @@ multihoming-quagga-bgp-mgt
 
 A simple toolkit we use to manage multihomed services operations, scaling, and so on. 
 
-If you expect advanced usages, consider [ExaBGP] (https://github.com/Exa-Networks/exabgp)
+If you expect advanced usages, consider using [ExaBGP] (https://github.com/Exa-Networks/exabgp). 
 
 ## Context : 
 
@@ -16,7 +16,6 @@ Being hosted in N DCs is a cool thing, but remember that you need to anticipate 
 ## Description : 
 
 - vip_mgmt : a script used to add/remove a set of VIP, based on the DNS name, from the local DC 
-
 - vip_watchdog : a scheduled script used to automatically add/remove VIPs announces from the local DC if the number of realservers hosting the services is too low/sufficiently high. 
 
 ## Prerequisites : 
@@ -26,17 +25,13 @@ These small tools relies on a quagga/ipvs/keepalived setup :
 ### Quagga
 
 - Used to announce BGP routes (of the VIPs) from an AS to the neighbors. 
-
 - Only a subpart of the VIP prefix is announced from one DC with the shortest AS-Path. The others announce the prefix too, but with a longer AS-Path. 
-
 - Global repartition between the sites (aka. anycast) could be done with "Geographic DNS", ISIS (internally) or other methods. 
-
 - When one DC is down/unreachable, route convergence is done by the network. 
 
 ### IPVS
 
 - Used to manage L4 load-balancing inside the Linux kernel
-
 - 3 avalaible modes to fit your needs (we use & recommend IPVS-TUN). 
 
 ### Keepalived
@@ -46,7 +41,6 @@ These small tools relies on a quagga/ipvs/keepalived setup :
 ### Some (best-)practices around DNS naming schemes : 
 
 - service.tld > CNAME vip.tld
-
 - vip.tld > A entry(ies) + AAAA if you're dual-stack (you should !)
 
 ```bash
@@ -71,7 +65,7 @@ vip-1.tld. 	   <TTL>   IN      A       192.0.2.2
  
 #### Quagga : 
 
-You should include this in your main configuration file 
+You shall include this in your main configuration file 
 ```bash
     vtysh_enable=yes
 ```
@@ -98,7 +92,7 @@ route-map BGP2 permit <ORDER>
 
 #### bgp.inc.sh / vip_mgt / vip_watchdog
 
-Replace the configuration parameters by your own (see variables between CONFIGURATION and END OF CONF)
+Replace the configuration parameters by your own (see variables between CONFIGURATION and END OF CONF markers)
 
 ### Enjoy : 
 
@@ -154,7 +148,7 @@ Paths: (2 available, best #2, table default)
 
 ```bash
 # Install the script as crontab every minute
-user@lvs:~$ echo "* * * * *   user    /path/vip_watchdog 2>&1 > /dev/null"
+user@lvs:~$ echo "* * * * *   user    /path/vip_watchdog > /dev/null 2>&1" /etc/cron.d/vip_watchdog
 
 # Control activity of the script
 user@lvs:~$ tail -f /var/log/syslog | egrep "bgp|vip"
