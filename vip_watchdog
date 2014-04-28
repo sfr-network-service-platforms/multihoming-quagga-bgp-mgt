@@ -1,0 +1,81 @@
+#!/bin/bash
+
+#**
+#
+# Simple watchdog to manage BGP announces (with Quagga/BGPd) vs. realservers states (with Keepalived)
+# - a VIP which has equal or less than DROP_ROUTE_THRESHOLD members will be un-announced on the network
+# - a VIP which has equal or more than REST_ROUTE_THRESHOLD members will be re-announced on the network
+# 
+# @date 2012
+# @author pcheynier
+#
+# Limitations : 
+# - VIPs hosting multiples services (ports) may be announced because only ONE of the services is down. 
+#
+#**
+
+# Require the BGP toolkit
+source /usr/local/bin/scripts/bgp.inc.sh
+
+# --------- CONFIGURATION
+
+# ipvsadm Path
+IPVSADM="/sbin/ipvsadm"
+
+# Default masks used to add/remove a route announce
+BGP_ANNOUNCE_MASK_V4="32"
+BGP_ANNOUNCE_MASK_V6="128"
+
+# Minimal number of operational realservers to unanounce the VIP
+DROP_ROUTE_THRESHOLD=0
+
+# Minimal number of operational realservers to reanounce the VIP
+REST_ROUTE_THRESHOLD=1
+
+# --------- END OF CONF
+
+# Check user and running processes
+if [ "`id -u -n`" != "root" ]; then
+        echo "Only run as root !"
+        exit 255;
+fi
+if [ -z "`pidof bgpd`" ]; then
+        echo "fatal error : quagga/bgpd not running !"
+        exit 255;
+fi
+if [ -z "`pidof keepalived`" ]; then
+        echo "fatal error : keepalived not running !"
+        exit 255;
+fi
+
+# Check for needed operations
+for VSERVER in `$IPVSADM -L -n | tail -n +4 | grep -v '^  ->' | awk '{ printf "%s,%s\n",$1,$2 }'`; do
+
+    PROTO=`echo $VSERVER | cut -d',' -f1`
+    VIP=`echo $VSERVER | cut -d',' -f2`
+    if [ $PROTO == "UDP" ]; then IPVSADM_PROTO_SWITCH="-u"; else IPVSADM_PROTO_SWITCH="-t"; fi;
+
+    # Get the number of real_server behind each VIP
+    NB_REALSERVERS=`$IPVSADM -L -n $IPVSADM_PROTO_SWITCH $VIP | tail -n +4 | grep '^  ->' | wc -l`;
+
+    # Check if this route is announced
+    if is_v6 $VIP; then 
+        BGP_ANNOUNCE_MASK=${BGP_ANNOUNCE_MASK_V6}
+    else 
+        BGP_ANNOUNCE_MASK=${BGP_ANNOUNCE_MASK_V4}
+    fi
+    VIP_NET="`echo $VIP | tr -d '[]' | rev | cut -d':' -f2- | rev`/${BGP_ANNOUNCE_MASK}"
+    check_route $VIP_NET
+    ROUTE_PRESENCE=$?
+    # Check if we need to do something
+    if [[ $NB_REALSERVERS -le $DROP_ROUTE_THRESHOLD ]] && [[ $ROUTE_PRESENCE -eq 0 ]]; then
+        # There is equal or less than DROP_ROUTE_THRESHOLD, we need to remove the route
+        remove_route "$VIP_NET"
+    elif [[ $NB_REALSERVERS -ge $REST_ROUTE_THRESHOLD ]] && [[ $ROUTE_PRESENCE -eq 1 ]]; then
+        # There is equal or more than REST_ROUTE_THRESHOLD, we need to add the route
+        add_route "$VIP_NET"
+    fi
+
+done
+
+exit 0;

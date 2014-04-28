@@ -1,0 +1,86 @@
+#!/bin/bash
+
+#**
+#
+# Management of VIP announces in the network
+# @date 2012
+# @author pcheynier
+#
+#**
+
+# Require the BGP toolkit
+source /usr/local/bin/scripts/bgp.inc.sh
+
+# --------- CONFIGURATION
+
+# Default masks used to add/remove a route announce
+BGP_ANNOUNCE_MASK_V4="32"
+BGP_ANNOUNCE_MASK_V6="128"
+
+# --------- END OF CONF
+
+usage () {
+    echo
+    echo "Add/Remove VIP announces from the BGP router" 
+
+    echo "Usage: " 
+    echo "   $0 [-a|-d] <vip_name>" 
+    echo "   vip_name : Name of the VIP service" 
+    echo "   * This name shall be resolved via DNS" 
+    echo "   * Its announce from the local BGPd router will be added or deleted from the network" 
+    exit 255;
+}
+
+# Check args
+if [ "$2" == "" ] || [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
+    usage
+fi
+if [ "$1" != "-a" ] && [ "$1" != "-d" ]; then
+    usage
+fi
+ACTION=$1
+VIP_NAME=$2
+
+# Resolve name
+IPS_V4=`dig +short $VIP_NAME A`;
+IPS_V6=`dig +short $VIP_NAME AAAA`;
+
+# Merge routes IPs into one single array
+IPS="${IPS_V4} ${IPS_V6}"
+
+# The name shall be resolved
+if [ "$IPS" == "" ]; then
+    echo "Unable to lookup $VIP_NAME. Exiting.."
+    exit 255;
+fi
+
+# Iterate over all Routes
+for ip in $IPS; do
+    if is_v6 $ip; then 
+        VIP_NET="$ip/$BGP_ANNOUNCE_MASK_V6"
+    else
+        VIP_NET="$ip/$BGP_ANNOUNCE_MASK_V4"
+    fi
+    # Check actual state
+    check_route $VIP_NET
+    ROUTE_PRESENCE=$?
+    # Add
+    if [ $ACTION == "-a" ]; then
+        if [[ $ROUTE_PRESENCE -eq 1 ]]; then 
+            add_route $VIP_NET
+        else
+            echo "Route $VIP_NET already exists"
+            continue
+        fi
+    # Delete
+    elif [ $ACTION == "-d" ]; then
+        if [[ $ROUTE_PRESENCE -eq 0 ]]; then
+            remove_route $VIP_NET
+        else
+            echo "Route $VIP_NET already removed"
+            continue
+        fi
+    fi
+done
+
+exit 0;
